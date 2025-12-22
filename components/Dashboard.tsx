@@ -26,13 +26,6 @@ const Dashboard: React.FC<Props> = ({ profile, target, result, caps }) => {
         setEditableResult(result);
     }, [result]);
 
-    const updateGapAnalysis = (field: string, value: string) => {
-        setEditableResult(prev => ({
-            ...prev,
-            gapAnalysis: { ...prev.gapAnalysis, [field]: value }
-        }));
-    };
-
     const updateBenchmarkDesc = (value: string) => {
         setEditableResult(prev => ({
             ...prev,
@@ -64,11 +57,11 @@ const Dashboard: React.FC<Props> = ({ profile, target, result, caps }) => {
     const handleDownloadPDF = async () => {
         if (!dashboardRef.current) return;
         setIsDownloading(true);
-        setIsPrinting(true); // Switch to print mode (divs instead of textareas)
+        setIsPrinting(true); // Switch to print mode (divs instead of textareas, hide buttons)
 
         try {
-            // Wait for React to render the div changes
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // Wait for React to render the div changes and layout shifts
+            await new Promise(resolve => setTimeout(resolve, 800));
             
             const canvas = await html2canvas(dashboardRef.current, { 
                 scale: 2, 
@@ -230,6 +223,9 @@ const Dashboard: React.FC<Props> = ({ profile, target, result, caps }) => {
                     </div>
                 )}
 
+                {/* Safety Spacer: FORCE PAGE BREAK EFFECT on Print */}
+                <div className={`transition-all duration-300 w-full ${isPrinting ? 'h-96' : 'h-6'}`}></div>
+
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                     {/* Left: Chart & Benchmark */}
                     <div className="lg:col-span-4 space-y-6">
@@ -269,22 +265,6 @@ const Dashboard: React.FC<Props> = ({ profile, target, result, caps }) => {
                                 <div className="flex items-center"><span className="w-3 h-3 bg-primary opacity-60 mr-1 rounded-sm"></span> 你 (You)</div>
                                 <div className="flex items-center"><span className="w-3 h-3 bg-secondary opacity-20 mr-1 rounded-sm"></span> 标杆 (Target)</div>
                             </div>
-
-                            {/* Editable Comment */}
-                            <div className="mt-auto bg-yellow-50 p-3 rounded border border-yellow-100 italic">
-                                <strong className="text-xs text-gray-600">AI 综合评价：</strong>
-                                {isPrinting ? (
-                                    <div className="w-full min-h-[5rem] mt-1 bg-transparent text-xs text-gray-600 whitespace-pre-wrap">
-                                        {editableResult.gapAnalysis.comment}
-                                    </div>
-                                ) : (
-                                    <textarea
-                                        className="w-full h-20 mt-1 bg-transparent text-xs text-gray-600 outline-none resize-none border border-transparent focus:border-yellow-300 rounded p-1"
-                                        value={editableResult.gapAnalysis.comment}
-                                        onChange={(e) => updateGapAnalysis('comment', e.target.value)}
-                                    />
-                                )}
-                            </div>
                         </div>
                     </div>
 
@@ -299,6 +279,9 @@ const Dashboard: React.FC<Props> = ({ profile, target, result, caps }) => {
                             onUpdate={updateRoadmap}
                             isPrinting={isPrinting}
                         />
+
+                        {/* Spacer for PDF page break safety after blueprint */}
+                        <div className="h-24 w-full"></div>
 
                         {/* Projects */}
                         <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
@@ -339,8 +322,8 @@ const Dashboard: React.FC<Props> = ({ profile, target, result, caps }) => {
                     </div>
                 </div>
 
-                {/* Footer Actions */}
-                <div className="mt-8 flex justify-center space-x-4 print:hidden">
+                {/* Footer Actions - Manually hidden via 'hidden' class during isPrinting for html2canvas */}
+                <div className={`mt-8 flex justify-center space-x-4 print:hidden ${isPrinting ? 'hidden' : 'flex'}`}>
                     <button 
                         onClick={handleDownloadPDF} 
                         disabled={isDownloading}

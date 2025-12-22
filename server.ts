@@ -138,11 +138,11 @@ const roadmapItemSchema: Schema = {
 const statsSchema: Schema = {
     type: Type.OBJECT,
     properties: {
-        gpa: { type: Type.NUMBER },
-        skills: { type: Type.NUMBER },
-        awards: { type: Type.NUMBER },
-        leadership: { type: Type.NUMBER },
-        project: { type: Type.NUMBER }
+        gpa: { type: Type.NUMBER, description: "Score strictly out of 100" },
+        skills: { type: Type.NUMBER, description: "Score strictly out of 100" },
+        awards: { type: Type.NUMBER, description: "Score strictly out of 100" },
+        leadership: { type: Type.NUMBER, description: "Score strictly out of 100" },
+        project: { type: Type.NUMBER, description: "Score strictly out of 100" }
     },
     required: ["gpa", "skills", "awards", "leadership", "project"]
 };
@@ -227,7 +227,8 @@ app.post('/api/blueprint', async (req, res) => {
             ${compContext}
 
             Task:
-            1. **Benchmark Analysis:** Find a REAL person or generate a data-backed composite profile of a successful applicant to ${data.target.school}. Score them vs the user.
+            1. **Benchmark Analysis:** Find a REAL person or generate a data-backed composite profile of a successful applicant to ${data.target.school}. 
+               **IMPORTANT**: Score them and the user on a **0-100 scale** (where 100 is perfect/admitted). Do NOT use 4.0 scale.
             2. **Target School Analysis:** Analyze the admission policy of ${data.target.school} (e.g., Shanghai ZongPing). List key requirements and strategic advice.
             3. **Projects:** Suggest 4 innovative project titles/descriptions.
             4. **Roadmap:** Create 3-4 specific milestones.
@@ -244,8 +245,28 @@ app.post('/api/blueprint', async (req, res) => {
 
         const json = JSON.parse(response.text || "{}");
 
-        const userStats = json.benchmark?.userStats || { gpa: data.caps.rank, skills: 50, awards: 30, leadership: 50, project: 40 };
-        const targetStats = json.benchmark?.stats || { gpa: 95, skills: 90, awards: 90, leadership: 90, project: 90 };
+        // Default Fallback
+        const defaultUserStats = { gpa: data.caps.rank, skills: 50, awards: 30, leadership: 50, project: 40 };
+        const defaultTargetStats = { gpa: 95, skills: 90, awards: 90, leadership: 90, project: 90 };
+        
+        let userStats = json.benchmark?.userStats || defaultUserStats;
+        let targetStats = json.benchmark?.stats || defaultTargetStats;
+
+        // Safety check: normalize if scores are weirdly low (e.g., < 10 likely means they used a 1-5 or 4.0 scale)
+        const normalize = (stats: any) => {
+            const newStats = { ...stats };
+            ['gpa', 'skills', 'awards', 'leadership', 'project'].forEach(key => {
+                if (newStats[key] <= 5 && newStats[key] > 0) {
+                    newStats[key] = newStats[key] * 20; // Rough conversion to 100 scale
+                } else if (newStats[key] <= 10 && newStats[key] > 5) {
+                    newStats[key] = newStats[key] * 10;
+                }
+            });
+            return newStats;
+        };
+
+        userStats = normalize(userStats);
+        targetStats = normalize(targetStats);
 
         const radarData = [
             { subject: '校内GPA', A: userStats.gpa, B: targetStats.gpa, fullMark: 100 },

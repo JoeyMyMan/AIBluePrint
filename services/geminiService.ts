@@ -1,7 +1,7 @@
 import { GoogleGenAI, Schema, Type } from "@google/genai";
 import { AppState, BlueprintResult } from "../types";
 
-// --- Client-Side Fallback Configuration ---
+// --- Shared Configuration (Conceptually shared with Backend) ---
 
 const COMPETITION_DB = [
     { name: "ISEF (国际科学与工程大奖赛)", tags: ["Global", "Sci/Eng", "Top Tier"], grade: "9-12" },
@@ -62,7 +62,7 @@ const generateDefaultRoadmap = (grade: string, type: string) => {
     ];
 };
 
-// --- Schema Definitions for Client Side ---
+// --- Schema Definitions ---
 
 const projectSchema: Schema = {
     type: Type.OBJECT,
@@ -87,11 +87,11 @@ const roadmapItemSchema: Schema = {
 const statsSchema: Schema = {
     type: Type.OBJECT,
     properties: {
-        gpa: { type: Type.NUMBER },
-        skills: { type: Type.NUMBER },
-        awards: { type: Type.NUMBER },
-        leadership: { type: Type.NUMBER },
-        project: { type: Type.NUMBER }
+        gpa: { type: Type.NUMBER, description: "Score strictly out of 100 (e.g. 85, 95)" },
+        skills: { type: Type.NUMBER, description: "Score strictly out of 100" },
+        awards: { type: Type.NUMBER, description: "Score strictly out of 100" },
+        leadership: { type: Type.NUMBER, description: "Score strictly out of 100" },
+        project: { type: Type.NUMBER, description: "Score strictly out of 100" }
     },
     required: ["gpa", "skills", "awards", "leadership", "project"]
 };
@@ -129,13 +129,11 @@ const analysisSchema: Schema = {
 };
 
 
-// --- Client Side Logic ---
+// --- Client Side Logic (Serverless) ---
 
 const generateBlueprintClientSide = async (data: AppState): Promise<BlueprintResult> => {
-    console.log("⚠️ Backend unreachable. Switching to Client-Side AI Generation...");
-    
     if (!process.env.API_KEY) {
-        throw new Error("Missing API Key. Please set process.env.API_KEY or ensure backend server is running.");
+        throw new Error("Missing API Key for Client-Side generation.");
     }
 
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -165,7 +163,8 @@ const generateBlueprintClientSide = async (data: AppState): Promise<BlueprintRes
         ${compContext}
 
         Task:
-        1. **Benchmark Analysis:** Find a REAL person or generate a data-backed composite profile of a successful applicant to ${data.target.school}. Score them vs the user.
+        1. **Benchmark Analysis:** Find a REAL person or generate a data-backed composite profile of a successful applicant to ${data.target.school}. 
+           **IMPORTANT**: Score them and the user on a **0-100 scale** (where 100 is perfect/admitted). Do NOT use 4.0 scale.
         2. **Target School Analysis:** Analyze the admission policy of ${data.target.school} (e.g., Shanghai ZongPing). List key requirements and strategic advice.
         3. **Projects:** Suggest 4 innovative project titles/descriptions.
         4. **Roadmap:** Create 3-4 specific milestones.
@@ -182,8 +181,28 @@ const generateBlueprintClientSide = async (data: AppState): Promise<BlueprintRes
 
     const json = JSON.parse(response.text || "{}");
 
-    const userStats = json.benchmark?.userStats || { gpa: data.caps.rank, skills: 50, awards: 30, leadership: 50, project: 40 };
-    const targetStats = json.benchmark?.stats || { gpa: 95, skills: 90, awards: 90, leadership: 90, project: 90 };
+    // Default Fallback
+    const defaultUserStats = { gpa: data.caps.rank, skills: 50, awards: 30, leadership: 50, project: 40 };
+    const defaultTargetStats = { gpa: 95, skills: 90, awards: 90, leadership: 90, project: 90 };
+    
+    let userStats = json.benchmark?.userStats || defaultUserStats;
+    let targetStats = json.benchmark?.stats || defaultTargetStats;
+
+    // Safety check: normalize if scores are weirdly low (e.g., < 10 likely means they used a 1-5 or 4.0 scale)
+    const normalize = (stats: any) => {
+        const newStats = { ...stats };
+        ['gpa', 'skills', 'awards', 'leadership', 'project'].forEach(key => {
+            if (newStats[key] <= 5 && newStats[key] > 0) {
+                newStats[key] = newStats[key] * 20; // Rough conversion to 100 scale
+            } else if (newStats[key] <= 10 && newStats[key] > 5) {
+                newStats[key] = newStats[key] * 10;
+            }
+        });
+        return newStats;
+    };
+
+    userStats = normalize(userStats);
+    targetStats = normalize(targetStats);
 
     const radarData = [
         { subject: '校内GPA', A: userStats.gpa, B: targetStats.gpa, fullMark: 100 },
@@ -209,45 +228,44 @@ const generateBlueprintClientSide = async (data: AppState): Promise<BlueprintRes
 // --- Main Service Function ---
 
 export const generateBlueprintWithAI = async (data: AppState): Promise<BlueprintResult> => {
-    // Attempt to connect to local backend. 
-    const API_URL = 'http://localhost:3000/api/blueprint';
+    // Mode Selection:
+    // If the API Key is present in the frontend environment (e.g., WebContainer, AI Studio),
+    // we default to Client-Side (Serverless) mode. This avoids the "Backend unavailable" connection error.
+    if (process.env.API_KEY) {
+        console.log("⚡ Serverless Mode: Using Client-Side AI Generation.");
+        return await generateBlueprintClientSide(data);
+    }
 
+    // Fallback Mode:
+    // If no API Key is found on the client, we assume the user is running the separate backend server.
+    const API_URL = 'http://localhost:3000/api/blueprint';
+    
+    console.log(`📡 Backend Mode: Sending request to ${API_URL}`);
     try {
-        console.log(`Sending request to backend: ${API_URL}`);
-        
-        // Add a short timeout to fail fast if backend is down (e.g., 1.5 seconds)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1500);
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s Timeout
 
         const response = await fetch(API_URL, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
             signal: controller.signal
         });
         clearTimeout(timeoutId);
 
         if (!response.ok) {
-            throw new Error(`Backend Error: ${response.status}`);
+            throw new Error(`Backend Error: ${response.status} ${response.statusText}`);
         }
 
-        const result: BlueprintResult = await response.json();
-        return result;
+        return await response.json();
 
     } catch (error: any) {
-        console.warn("Backend unavailable, falling back to client-side logic.", error);
-        
-        // Fallback to client-side generation
-        try {
-            return await generateBlueprintClientSide(data);
-        } catch (clientError: any) {
-             throw new Error(
-                "生成失败。\n\n" +
-                "原因1: 后端服务未运行 (localhost:3000)。\n" +
-                "原因2: 客户端降级失败 (" + clientError.message + ")。"
-            );
-        }
+        // If Backend fails and we have no API Key, we are stuck.
+        console.error("Blueprint generation failed:", error);
+        throw new Error(
+            "生成失败。\n\n" +
+            "未检测到 API Key，且无法连接到后端服务器 (localhost:3000)。\n" +
+            "请确保 process.env.API_KEY 已设置 (Serverless模式) 或 后端服务已启动 (Backend模式)。"
+        );
     }
 };
