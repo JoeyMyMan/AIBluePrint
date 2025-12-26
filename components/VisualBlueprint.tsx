@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BlueprintResult } from '../types';
 
 interface Props {
@@ -10,7 +10,8 @@ interface Props {
 }
 
 const VisualBlueprint: React.FC<Props> = ({ roadmap, grade, location, onUpdate, isPrinting = false }) => {
-    
+    const [continuousEffort, setContinuousEffort] = useState('软件著作权申请、专利申请、综评文书素材积累');
+
     const handleChange = (index: number, field: keyof typeof roadmap[0], value: string) => {
         if (!onUpdate) return;
         const newRoadmap = [...roadmap];
@@ -115,7 +116,17 @@ const VisualBlueprint: React.FC<Props> = ({ roadmap, grade, location, onUpdate, 
                 </div>
 
                 <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3 text-center text-sm text-blue-800 font-medium shadow-sm">
-                    🚀 持续投入：软件著作权申请、专利申请、综评文书素材积累
+                    🚀 持续投入：
+                    {isPrinting ? (
+                        <span className="font-normal">{continuousEffort}</span>
+                    ) : (
+                        <textarea
+                            className="w-full bg-blue-50 text-blue-800 text-center outline-none resize-none"
+                            value={continuousEffort}
+                            onChange={(e) => setContinuousEffort(e.target.value)}
+                            rows={2}
+                        />
+                    )}
                 </div>
             </div>
         </div>

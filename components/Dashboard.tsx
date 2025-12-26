@@ -57,40 +57,56 @@ const Dashboard: React.FC<Props> = ({ profile, target, result, caps }) => {
     const handleDownloadPDF = async () => {
         if (!dashboardRef.current) return;
         setIsDownloading(true);
-        setIsPrinting(true); // Switch to print mode (divs instead of textareas, hide buttons)
+        setIsPrinting(true); // Switch to print mode
 
         try {
-            // Wait for React to render the div changes and layout shifts
+            // Wait for React to render
             await new Promise(resolve => setTimeout(resolve, 800));
             
-            const canvas = await html2canvas(dashboardRef.current, { 
-                scale: 2, 
-                useCORS: true, 
-                logging: false, 
-                backgroundColor: '#ffffff'
-            });
-            const imgData = canvas.toDataURL('image/png');
-            const pdfWidth = 297; 
-            const imgProps = { width: canvas.width, height: canvas.height };
-            const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
-            // eslint-disable-next-line new-cap
+            // @ts-ignore
             const pdf = new jsPDF('l', 'mm', 'a4');
-            let heightLeft = imgHeight;
-            let position = 0;
-            pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
-            heightLeft -= 210;
-            while (heightLeft >= 0) {
-                position = heightLeft - imgHeight;
-                pdf.addPage();
+            const pdfWidth = 297;
+            const pdfHeight = 210;
+            
+            const sections = ['pdf-section-1', 'pdf-section-2', 'pdf-section-3'];
+            
+            for (let i = 0; i < sections.length; i++) {
+                const element = document.getElementById(sections[i]);
+                if (!element) continue;
+
+                const canvas = await html2canvas(element, { 
+                    scale: 2, 
+                    useCORS: true, 
+                    logging: false, 
+                    backgroundColor: '#ffffff'
+                });
+
+                const imgData = canvas.toDataURL('image/png');
+                const imgProps = { width: canvas.width, height: canvas.height };
+                const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+                
+                if (i > 0) pdf.addPage();
+
+                let heightLeft = imgHeight;
+                let position = 0;
+                
                 pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
-                heightLeft -= 210;
+                heightLeft -= pdfHeight;
+                
+                while (heightLeft > 0) {
+                    position = heightLeft - imgHeight;
+                    pdf.addPage();
+                    pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+                    heightLeft -= pdfHeight;
+                }
             }
+
             pdf.save(`${profile.name}_SciTech_Blueprint.pdf`);
         } catch (error) {
             console.error("PDF failed", error);
             alert("PDF生成失败，请尝试使用浏览器打印(Ctrl+P)");
         } finally {
-            setIsPrinting(false); // Switch back to edit mode
+            setIsPrinting(false);
             setIsDownloading(false);
         }
     };
@@ -110,8 +126,9 @@ const Dashboard: React.FC<Props> = ({ profile, target, result, caps }) => {
     return (
         <div className="animate-fadeIn">
             <div ref={dashboardRef} className="bg-white p-4 md:p-8 max-w-[1200px] mx-auto min-h-screen">
-                {/* Header */}
-                <div className="bg-white rounded-xl shadow-md p-6 mb-8 border-l-8 border-primary relative overflow-hidden">
+                <div id="pdf-section-1">
+                    {/* Header */}
+                    <div className="bg-white rounded-xl shadow-md p-6 mb-8 border-l-8 border-primary relative overflow-hidden">
                     <div className="absolute right-0 top-0 opacity-5 text-9xl font-bold select-none text-primary pointer-events-none">PLAN</div>
                     <div className="flex flex-col md:flex-row justify-between items-start relative z-10">
                         <div>
@@ -222,11 +239,10 @@ const Dashboard: React.FC<Props> = ({ profile, target, result, caps }) => {
                         </div>
                     </div>
                 )}
+                </div>
 
-                {/* Safety Spacer: FORCE PAGE BREAK EFFECT on Print */}
-                <div className={`transition-all duration-300 w-full ${isPrinting ? 'h-96' : 'h-6'}`}></div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Section 2: Portrait + Blueprint */}
+                <div id="pdf-section-2" className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
                     {/* Left: Chart & Benchmark */}
                     <div className="lg:col-span-4 space-y-6">
                         <div className="bg-white rounded-xl shadow-sm p-5 h-full flex flex-col">
@@ -279,45 +295,44 @@ const Dashboard: React.FC<Props> = ({ profile, target, result, caps }) => {
                             onUpdate={updateRoadmap}
                             isPrinting={isPrinting}
                         />
+                    </div>
+                </div>
 
-                        {/* Spacer for PDF page break safety after blueprint */}
-                        <div className="h-24 w-full"></div>
-
-                        {/* Projects */}
-                        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
-                                <span className="mr-2">💡</span> 推荐科创课题 (Projects)
-                            </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {editableResult.projects.map((project, idx) => (
-                                    <div key={idx} className="bg-green-50 rounded-lg p-4 border border-green-100 hover:shadow-md transition group">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <span className="bg-green-200 text-green-800 text-xs px-2 py-0.5 rounded font-bold">
-                                                Project {idx + 1}
-                                            </span>
-                                        </div>
-                                        {isPrinting ? (
-                                            <>
-                                                <div className="font-bold text-green-900 mb-1 text-sm">{project.title}</div>
-                                                <div className="text-xs text-gray-600 leading-relaxed">{project.desc}</div>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <input
-                                                    className="w-full font-bold text-green-900 mb-1 text-sm bg-transparent outline-none border-b border-transparent focus:border-green-300"
-                                                    value={project.title}
-                                                    onChange={(e) => updateProject(idx, 'title', e.target.value)}
-                                                />
-                                                <textarea
-                                                    className="w-full text-xs text-gray-600 leading-relaxed bg-transparent outline-none resize-none h-20 border-transparent focus:border-green-300 border rounded"
-                                                    value={project.desc}
-                                                    onChange={(e) => updateProject(idx, 'desc', e.target.value)}
-                                                />
-                                            </>
-                                        )}
+                {/* Section 3: Projects */}
+                <div id="pdf-section-3">
+                    <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                        <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                            <span className="mr-2">💡</span> 推荐科创课题 (Projects)
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {editableResult.projects.map((project, idx) => (
+                                <div key={idx} className="bg-green-50 rounded-lg p-4 border border-green-100 hover:shadow-md transition group">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <span className="bg-green-200 text-green-800 text-xs px-2 py-0.5 rounded font-bold">
+                                            Project {idx + 1}
+                                        </span>
                                     </div>
-                                ))}
-                            </div>
+                                    {isPrinting ? (
+                                        <>
+                                            <div className="font-bold text-green-900 mb-1 text-sm">{project.title}</div>
+                                            <div className="text-xs text-gray-600 leading-relaxed">{project.desc}</div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <input
+                                                className="w-full font-bold text-green-900 mb-1 text-sm bg-transparent outline-none border-b border-transparent focus:border-green-300"
+                                                value={project.title}
+                                                onChange={(e) => updateProject(idx, 'title', e.target.value)}
+                                            />
+                                            <textarea
+                                                className="w-full text-xs text-gray-600 leading-relaxed bg-transparent outline-none resize-none h-20 border-transparent focus:border-green-300 border rounded"
+                                                value={project.desc}
+                                                onChange={(e) => updateProject(idx, 'desc', e.target.value)}
+                                            />
+                                        </>
+                                    )}
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>

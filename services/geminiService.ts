@@ -204,6 +204,11 @@ const generateBlueprintClientSide = async (data: AppState): Promise<BlueprintRes
     userStats = normalize(userStats);
     targetStats = normalize(targetStats);
 
+    const hasCompetition = !!(data.caps.customInputs && data.caps.customInputs.otherCompetition && data.caps.customInputs.otherCompetition.trim());
+    if (!hasCompetition) {
+        userStats.awards = Math.min(userStats.awards ?? 0, 20);
+    }
+
     const radarData = [
         { subject: '校内GPA', A: userStats.gpa, B: targetStats.gpa, fullMark: 100 },
         { subject: '技术/学术', A: userStats.skills, B: targetStats.skills, fullMark: 100 },
