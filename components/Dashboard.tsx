@@ -111,6 +111,64 @@ const Dashboard: React.FC<Props> = ({ profile, target, result, caps }) => {
         }
     };
 
+    const handleDownloadHTML = () => {
+        if (!dashboardRef.current) return;
+
+        const clone = dashboardRef.current.cloneNode(true) as HTMLElement;
+        
+        // Remove textareas and inputs, replace with static content
+        const textareas = clone.querySelectorAll('textarea');
+        textareas.forEach(textarea => {
+            const div = document.createElement('div');
+            div.innerHTML = textarea.value.replace(/\n/g, '<br>');
+            div.className = textarea.className;
+            textarea.parentNode?.replaceChild(div, textarea);
+        });
+
+        const inputs = clone.querySelectorAll('input');
+        inputs.forEach(input => {
+            const div = document.createElement('div');
+            div.textContent = input.value;
+            div.className = input.className;
+            input.parentNode?.replaceChild(div, input);
+        });
+
+        const buttons = clone.querySelectorAll('button');
+        buttons.forEach(button => button.style.display = 'none');
+
+        const htmlContent = `
+            <!DOCTYPE html>
+            <html lang="zh-CN">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>${profile.name}的科创升学蓝图</title>
+                <script src="https://cdn.tailwindcss.com"></script>
+                <style>
+                    body { font-family: 'Inter', sans-serif; }
+                    @media print {
+                        body { -webkit-print-color-adjust: exact; }
+                        .no-print { display: none; }
+                    }
+                </style>
+            </head>
+            <body class="bg-gray-100 p-8">
+                <div class="max-w-4xl mx-auto">
+                    ${clone.innerHTML}
+                </div>
+            </body>
+            </html>
+        `;
+
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${profile.name}_SciTech_Blueprint.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    };
+
     const getSkillLabel = (skillId: string) => {
         const map: Record<string, string> = {
             'VisualCoding': '图形化编程', 'Python': 'Python', 'CPP': 'C++/C', 'C': 'C',
@@ -345,6 +403,12 @@ const Dashboard: React.FC<Props> = ({ profile, target, result, caps }) => {
                         className="bg-primary text-white px-6 py-3 rounded-lg shadow hover:bg-teal-700 transition flex items-center font-bold"
                     >
                         {isDownloading ? '生成中...' : '📥 下载完整蓝图 (PDF)'}
+                    </button>
+                    <button 
+                        onClick={handleDownloadHTML} 
+                        className="bg-blue-600 text-white px-6 py-3 rounded-lg shadow hover:bg-blue-700 transition flex items-center font-bold"
+                    >
+                        📄 下载可编辑HTML
                     </button>
                     <button 
                         onClick={() => window.print()} 
